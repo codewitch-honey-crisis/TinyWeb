@@ -59,6 +59,20 @@ namespace TinyWeb
 					throw new SocketException((int)_eventArgs.SocketError);
 			}
 		}
+		// added by codewitch honey crisis
+		public static Task<Socket> AcceptAsync(
+	this Socket socket)
+		{
+			var tcs = new TaskCompletionSource<Socket>(socket);
+			socket.BeginAccept(iar =>
+			{
+				var t = (TaskCompletionSource<Socket>)iar.AsyncState;
+				var s = (Socket)t.Task.AsyncState;
+				try { t.TrySetResult(s.EndAccept(iar)); }
+				catch (Exception exc) { t.TrySetException(exc); }
+			}, tcs);
+			return tcs.Task;
+		}
 		public static Task<int> ReceiveAsync(
 	this Socket socket, byte[] buffer, int offset, int size,
 	SocketFlags socketFlags)
@@ -434,7 +448,64 @@ namespace TinyWeb
 					done = true;
 			}
 		}
+		public static async void ServeHttpAsync(this Socket listener, ProcessResponse processResponseCallback, ProcessRequestBody processRequestBodyCallback = null)
+		{
+			var done = false;
+			while (!done)
+			{
+				HttpRequest hreq = null;
+				Socket socket = null;
+				try
+				{
+					socket = await listener.AcceptAsync();
+					
+				}
+				catch (SocketException)
+				{
+					socket = null;
+				}
+				catch (ObjectDisposedException)
+				{
+					socket = null;
+				}
+				if (null != socket)
+				{
+					var newHreq = await socket.ReceiveHttpRequestAsync();
+					if (null != newHreq)
+						hreq = newHreq;
+					else
+						done = true;
+					if (null != hreq)
+					{
+						var hres = new HttpResponse(hreq, socket);
+						processResponseCallback(hreq, hres);
+						if (!hres.IsClosed)
+						{
+							if (!hres.HasSentHeaders)
+								hres.SendHeaders();
+							try
+							{
+								hres.SendEndChunk();
+							}
+							catch { }
 
+							if (!hres.HasHeader("Connection") && !hres.IsKeepAlive)
+							{
+								hres.Close();
+								done = true;
+							}
+
+						}
+						else
+							done = true;
+					}
+					else
+						done = true;
+				}
+				else
+					done = true;
+			}
+		}
 	}
 
 	public delegate void ProcessRequestBody(Socket socket, string headers, byte[] data);

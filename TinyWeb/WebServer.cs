@@ -121,7 +121,7 @@ namespace TinyWeb
 				_listener.Listen(_backLog);
 				ThreadPool.QueueUserWorkItem((l) =>
 				{
-					(l as Socket).ServeHttp((req, res) =>
+					(l as Socket).ServeHttpAsync((req, res) =>
 					{
 						OnProcessRequest(new ProcessRequestEventArgs(req, res));
 					});
